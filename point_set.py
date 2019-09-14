@@ -56,19 +56,20 @@ class PointSet:
             except QhullError:
                 self.hull = None
 
-        def draw(self, painter):
+        def draw(self, painter, draw_polygon=False):
             if isinstance(painter, QPainter):
                 if Settings.show_voronoi:
                     pen = QPen(Settings.default_pen)
                     if Settings.show_delaunay:
                         pen.setStyle(Qt.DashLine)
                     painter.setPen(pen)
+                    if draw_polygon and self.is_closed() and self.hull:
+                        painter.setBrush(Color.get(self.idx))
+                        painter.drawPolygon(QPolygon(QPoint(*p) for p in self.hull.points[self.hull.vertices]))
+                        return
                     for i, ((x1, y1), (x2, y2)) in enumerate(self.ridges):
                         if self.idx > self.ngbrs[i]:
                             painter.drawLine(x1, y1, x2, y2)
-                    if self.is_closed() and self.hull:
-                        painter.setBrush(Color.get(self.idx))
-                        painter.drawPolygon(QPolygon(QPoint(*p) for p in self.hull.points[self.hull.vertices]))
                 if Settings.show_delaunay:
                     pen = QPen(Settings.default_pen)
                     painter.setPen(pen)
@@ -119,6 +120,8 @@ class PointSet:
         return self._regions[idx]
 
     def draw(self, painter):
+        for region in self.regions:
+            region.draw(painter, draw_polygon=True)
         for region in self.regions:
             region.draw(painter)
         for point in self:
