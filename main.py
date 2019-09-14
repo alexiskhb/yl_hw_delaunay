@@ -2,16 +2,19 @@ import sys
 from PyQt5 import uic
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPainter, QPaintEvent, QMouseEvent
-from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt5.QtWidgets import QApplication, QWidget, QToolButton
 
 from color import Color
 from point_set import PointSet
+from settings import SettingsWindow
 
 
 class Window(QWidget):
     def __init__(self):
         super().__init__()
         uic.loadUi('main.ui', self)
+        self.toolButton: QToolButton = self.toolButton
+        self.toolButton.clicked.connect(self.openSettings)
         w0, h0 = self.width()//4, self.height()//4
         self.ps = PointSet([[w0, h0], [w0, h0*3], [w0*3, h0*3]])
         self.moving = False
@@ -47,6 +50,10 @@ class Window(QWidget):
 
     def in_ball(self, x, y):
         return (x - self.ball_x) ** 2 + (y - self.ball_y) ** 2 <= self.ball_r ** 2
+
+    def openSettings(self):
+        self.stg = SettingsWindow(self.repaint)
+        self.stg.show()
 
 
 if __name__ == '__main__':
