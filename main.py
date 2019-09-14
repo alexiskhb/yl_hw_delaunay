@@ -1,6 +1,7 @@
 import sys
+from PyQt5 import uic
 from PyQt5.QtCore import Qt, QPoint
-from PyQt5.QtGui import QPainter, QPaintEvent, QMouseEvent, QPolygon, QColor
+from PyQt5.QtGui import QPainter, QPaintEvent, QMouseEvent, QPolygon, QColor, QPen
 from PyQt5.QtWidgets import QApplication, QWidget
 from typing import List, Optional, Tuple
 from scipy.spatial import Voronoi, ConvexHull
@@ -14,6 +15,8 @@ class Settings:
     point_size = 10
     default_brush = Qt.white
     default_pen = Qt.black
+    show_voronoi = True
+    show_delaunay = False
 
 
 class Color:
@@ -45,7 +48,10 @@ class PointSet:
 
         def draw(self, painter):
             if isinstance(painter, QPainter):
-                color = Color.get(self.idx) if not self.ps.region(self.idx).is_closed() else Settings.default_brush
+                try:
+                    color = Color.get(self.idx) if not self.ps.region(self.idx).is_closed() else Settings.default_brush
+                except IndexError:
+                    color = Settings.default_brush
                 painter.setBrush(color)
                 painter.drawEllipse(self.x - Settings.point_size, self.y - Settings.point_size, 2 * Settings.point_size, 2 * Settings.point_size)
 
@@ -83,13 +89,24 @@ class PointSet:
 
         def draw(self, painter):
             if isinstance(painter, QPainter):
-                for i, ((x1, y1), (x2, y2)) in enumerate(self.ridges):
-                    if self.idx > self.ngbrs[i]:
-                        painter.setPen(Settings.default_pen)
-                        painter.drawLine(x1, y1, x2, y2)
-                if self.is_closed() and self.hull:
-                    painter.setBrush(Color.get(self.idx))
-                    painter.drawPolygon(QPolygon(QPoint(*p) for p in self.hull.points[self.hull.vertices]))
+                if Settings.show_voronoi:
+                    pen = QPen(Settings.default_pen)
+                    if Settings.show_delaunay:
+                        pen.setStyle(Qt.DashLine)
+                    painter.setPen(pen)
+                    for i, ((x1, y1), (x2, y2)) in enumerate(self.ridges):
+                        if self.idx > self.ngbrs[i]:
+                            painter.drawLine(x1, y1, x2, y2)
+                    if self.is_closed() and self.hull:
+                        painter.setBrush(Color.get(self.idx))
+                        painter.drawPolygon(QPolygon(QPoint(*p) for p in self.hull.points[self.hull.vertices]))
+                if Settings.show_delaunay:
+                    pen = QPen(Settings.default_pen)
+                    painter.setPen(pen)
+                    for nbr in self.ngbrs:
+                        if self.idx > nbr:
+                            (x1, y1), (x2, y2) = self.ps.points[self.idx], self.ps.points[nbr]
+                            painter.drawLine(x1, y1, x2, y2)
 
         def is_closed(self):
             return all(idx >= 0 for idx in self.ps.vor.regions[self.ps.vor.point_region[self.idx]])
@@ -171,7 +188,7 @@ def get_segments(vor):
 class Window(QWidget):
     def __init__(self):
         super().__init__()
-        self.setStyleSheet('background-color: white;')
+        uic.loadUi('main.ui', self)
         w0, h0 = self.width()//4, self.height()//4
         self.ps = PointSet([[w0, h0], [w0, h0*3], [w0*3, h0*3]])
         self.moving = False
