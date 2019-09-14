@@ -32,6 +32,10 @@ class Color:
                 Color._idx2clr.append(QColor.fromHsl(h, s, l))
         return Color._idx2clr[idx]
 
+    @staticmethod
+    def pop(idx):
+        Color._idx2clr.pop(idx)
+
 
 class PointSet:
     class PointDescriptor:
@@ -186,6 +190,11 @@ class Window(QWidget):
                 self.ps.add(event.x(), event.y())
             self.current_point = self.ps.get_point(event.x(), event.y())
             self.moving = True
+        if event.button() == Qt.RightButton:
+            removee = self.ps.get_point(event.x(), event.y())
+            if removee is not None and len(self.ps.points) > 3:
+                Color.pop(removee.idx)
+                self.ps.points.pop(removee.idx)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         self.moving = False
