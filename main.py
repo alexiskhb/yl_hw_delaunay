@@ -1,27 +1,49 @@
 import sys
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPainter, QPaintEvent, QMouseEvent
+from PyQt5.QtCore import Qt, QPoint
+from PyQt5.QtGui import QPainter, QPaintEvent, QMouseEvent, QPolygon, QColor
 from PyQt5.QtWidgets import QApplication, QWidget
-from PyQt5.uic import loadUi
 from typing import List, Optional, Tuple
-from scipy.spatial import Voronoi
+from scipy.spatial import Voronoi, ConvexHull
 from scipy.spatial.qhull import QhullError
+from random import random
 import numpy as np
+
+
+class Settings:
+    colors_on = True
+    point_size = 10
+    default_brush = Qt.white
+    default_pen = Qt.black
+
+
+class Color:
+    _idx2clr = []
+
+    @staticmethod
+    def get(idx):
+        if not Settings.colors_on:
+            return Settings.default_brush
+
+        if idx >= len(Color._idx2clr):
+            while len(Color._idx2clr) <= idx:
+                h = 360 * random()
+                s = 80 + 20 * random()
+                l = 95 + 5 * random()
+                Color._idx2clr.append(QColor.fromHsl(h, s, l))
+        return Color._idx2clr[idx]
 
 
 class PointSet:
     class PointDescriptor:
-        radius = 8
-        color = Qt.white
-
         def __init__(self, ps, idx: int):
-            self.ps = ps
+            self.ps: PointSet = ps
             self.idx = idx
 
         def draw(self, painter):
             if isinstance(painter, QPainter):
-                painter.setBrush(self.color)
-                painter.drawEllipse(self.x - self.radius, self.y - self.radius, 2 * self.radius, 2 * self.radius)
+                color = Color.get(self.idx) if not self.ps.region(self.idx).is_closed() else Settings.default_brush
+                painter.setBrush(color)
+                painter.drawEllipse(self.x - Settings.point_size, self.y - Settings.point_size, 2 * Settings.point_size, 2 * Settings.point_size)
 
         @property
         def xy(self) -> List[int]:
@@ -43,21 +65,35 @@ class PointSet:
 
     class RegionDescriptor:
         def __init__(self, ps, prr: Tuple[int, List[Tuple[int, List[float]]]]):
-            self.ps = ps
+            self.ps: PointSet = ps
             self.idx = prr[0]
             self.ngbrs = [p for p, _ in prr[1]]
             self.ridges = [((int(x1), int(y1)), (int(x2), int(y2))) for _, ((x1, y1), (x2, y2)) in prr[1]]
+            self.points = []
+            for ridge in self.ridges:
+                self.points.extend(ridge)
+            try:
+                self.hull = ConvexHull(self.points)
+            except QhullError:
+                self.hull = None
 
         def draw(self, painter):
             if isinstance(painter, QPainter):
                 for i, ((x1, y1), (x2, y2)) in enumerate(self.ridges):
                     if self.idx > self.ngbrs[i]:
-                        painter.setPen(Qt.black)
+                        painter.setPen(Settings.default_pen)
                         painter.drawLine(x1, y1, x2, y2)
+                if self.is_closed() and self.hull:
+                    painter.setBrush(Color.get(self.idx))
+                    painter.drawPolygon(QPolygon(QPoint(*p) for p in self.hull.points[self.hull.vertices]))
+
+        def is_closed(self):
+            return all(idx >= 0 for idx in self.ps.vor.regions[self.ps.vor.point_region[self.idx]])
 
     def __init__(self, points=None):
         self.points: List[List[int]] = []
-        self.vor = None
+        self._regions = []
+        self.vor: Optional[Voronoi] = None
         try:
             self.points.extend(points)
         except TypeError:
@@ -75,7 +111,7 @@ class PointSet:
     def get_point(self, x: int, y: int) -> Optional[PointDescriptor]:
         # Разворачиваем, чтобы хватать верхнюю точку в стопке (более интуитивно)
         for i, (x0, y0) in list(enumerate(self.points))[::-1]:
-            if (x - x0)**2 + (y - y0)**2 <= PointSet.PointDescriptor.radius**2:
+            if (x - x0)**2 + (y - y0)**2 <= Settings.point_size**2:
                 return self[i]
         return None
     
@@ -86,7 +122,11 @@ class PointSet:
         except QhullError:
             pass
         prrs = get_segments(self.vor)
-        return map(lambda prr: PointSet.RegionDescriptor(self, prr), prrs.items())
+        self._regions = list(map(lambda prr: PointSet.RegionDescriptor(self, prr), sorted(prrs.items())))
+        return self._regions
+
+    def region(self, idx) -> RegionDescriptor:
+        return self._regions[idx]
 
     def draw(self, painter):
         for region in self.regions:
@@ -127,7 +167,7 @@ def get_segments(vor):
 class Window(QWidget):
     def __init__(self):
         super().__init__()
-        loadUi('main.ui')
+        self.setStyleSheet('background-color: white;')
         w0, h0 = self.width()//4, self.height()//4
         self.ps = PointSet([[w0, h0], [w0, h0*3], [w0*3, h0*3]])
         self.moving = False
